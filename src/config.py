@@ -36,6 +36,11 @@ class Settings:
     chunk_overlap: int = int(_get("CHUNK_OVERLAP", "150"))
     top_k: int = int(_get("TOP_K", "4"))
 
+    # Retrieval: set USE_MMR=true for diversity-aware (less redundant) retrieval.
+    use_mmr: bool = _get("USE_MMR", "false").lower() in ("1", "true", "yes")
+    mmr_lambda: float = float(_get("MMR_LAMBDA", "0.5"))
+    mmr_fetch_k: int = int(_get("MMR_FETCH_K", "20"))
+
     data_dir: str = _get("DATA_DIR", "data")
     vector_store_dir: str = _get("VECTOR_STORE_DIR", "data/vector_store")
 

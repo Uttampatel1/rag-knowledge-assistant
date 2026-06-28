@@ -13,11 +13,13 @@ Generic LLMs don't know your internal handbooks, contracts, product docs, or pol
 ## Key capabilities (what it proves)
 
 - **End-to-end RAG pipeline:** ingest → chunk → embed → vector search → grounded generation → citations.
+- **Diversity-aware retrieval:** optional **Maximal Marginal Relevance (MMR)** re-ranking (`USE_MMR=true`) trades a little relevance for less-redundant context, so the LLM doesn't get the same fact three times.
 - **Pluggable LLM provider:** Google **Gemini** in production; a deterministic **offline mock** provider for tests/CI/demos (no API key needed).
 - **Pluggable embeddings:** `sentence-transformers` for semantic quality, with a dependency-free **hashing fallback** so the system runs fully offline.
 - **Auditable answers:** each response returns the exact passages used, with similarity scores.
 - **Two interfaces:** documented REST API (FastAPI/OpenAPI) and a Streamlit UI.
-- **Tested:** 15 `pytest` tests covering chunking, vector search, persistence, and the pipeline.
+- **Production-ready:** structured logging (`LOG_LEVEL`), `Dockerfile` + `docker-compose.yml`, and GitHub Actions CI.
+- **Tested:** 22 `pytest` tests covering chunking, vector search (plain + MMR), persistence, and the pipeline.
 
 ## Demo
 
@@ -132,12 +134,16 @@ EMBEDDINGS_BACKEND=sentence-transformers
 │   ├── config.py           # typed settings from .env
 │   ├── chunking.py         # overlapping, sentence-aware text splitter
 │   ├── embeddings.py       # sentence-transformers + hashing fallback
-│   ├── vector_store.py     # NumPy cosine store (Chroma/FAISS-style interface)
+│   ├── vector_store.py     # NumPy cosine store (Chroma/FAISS-style) + MMR search
 │   ├── ingest.py           # PDF/TXT/MD loading + index building
 │   ├── llm_provider.py     # pluggable Gemini / mock providers
-│   ├── rag_pipeline.py     # retrieve → generate → cite orchestration
+│   ├── logging_utils.py    # structured logging + timing
+│   ├── rag_pipeline.py     # retrieve (plain/MMR) → generate → cite orchestration
 │   └── generate_data.py    # synthetic knowledge base generator
-├── tests/                  # 15 pytest tests (offline)
+├── tests/                  # 22 pytest tests (offline)
+├── Dockerfile              # containerised FastAPI service
+├── docker-compose.yml
+├── .github/workflows/ci.yml
 ├── requirements.txt
 ├── .env.example
 └── .gitignore

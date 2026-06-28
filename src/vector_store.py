@@ -57,6 +57,46 @@ class NumpyVectorStore:
             for i in top_idx
         ]
 
+    def search_mmr(
+        self,
+        query_vector: np.ndarray,
+        top_k: int = 4,
+        lambda_mult: float = 0.5,
+        fetch_k: int = 20,
+    ) -> list[SearchResult]:
+        """Maximal Marginal Relevance search — relevant *and* non-redundant.
+
+        Plain top-k often returns near-duplicate chunks (the same fact phrased
+        three ways), wasting the LLM's context window. MMR greedily picks the next
+        chunk that maximises ``lambda * relevance - (1 - lambda) * redundancy``,
+        where redundancy is the max similarity to anything already selected.
+        ``lambda_mult=1`` reduces to pure relevance; ``0`` maximises diversity.
+        """
+        if len(self._chunks) == 0:
+            return []
+        query = query_vector.astype(np.float32).reshape(-1)
+        scores = self._vectors @ query
+        fetch_k = min(fetch_k, len(scores))
+        top_k = min(top_k, fetch_k)
+        candidates = list(np.argsort(-scores)[:fetch_k])
+
+        selected: list[int] = []
+        while candidates and len(selected) < top_k:
+            if not selected:
+                best = candidates.pop(0)
+                selected.append(best)
+                continue
+            selected_mat = self._vectors[selected]
+            best_idx, best_val = None, -np.inf
+            for ci, cand in enumerate(candidates):
+                redundancy = float(np.max(self._vectors[cand] @ selected_mat.T))
+                mmr = lambda_mult * float(scores[cand]) - (1 - lambda_mult) * redundancy
+                if mmr > best_val:
+                    best_val, best_idx = mmr, ci
+            selected.append(candidates.pop(best_idx))
+
+        return [SearchResult(chunk=self._chunks[i], score=float(scores[i])) for i in selected]
+
     def sources(self) -> list[str]:
         return sorted({c.source for c in self._chunks})
 

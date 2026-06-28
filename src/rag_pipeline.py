@@ -18,7 +18,10 @@ from .ingest import (
     ingest_directory,
 )
 from .llm_provider import LLMProvider, get_provider
+from .logging_utils import get_logger
 from .vector_store import NumpyVectorStore
+
+log = get_logger(__name__)
 
 
 @dataclass
@@ -83,13 +86,26 @@ class RAGPipeline:
         return self.store.sources()
 
     # --- query --------------------------------------------------------------
-    def retrieve(self, question: str, top_k: int | None = None):
+    def retrieve(self, question: str, top_k: int | None = None, use_mmr: bool | None = None):
         top_k = top_k or self.settings.top_k
+        use_mmr = self.settings.use_mmr if use_mmr is None else use_mmr
         query_vec = self.embedder.embed_one(question)
+        if use_mmr:
+            return self.store.search_mmr(
+                query_vec,
+                top_k=top_k,
+                lambda_mult=self.settings.mmr_lambda,
+                fetch_k=self.settings.mmr_fetch_k,
+            )
         return self.store.search(query_vec, top_k=top_k)
 
-    def answer(self, question: str, top_k: int | None = None) -> RAGAnswer:
-        results = self.retrieve(question, top_k=top_k)
+    def answer(self, question: str, top_k: int | None = None, use_mmr: bool | None = None) -> RAGAnswer:
+        results = self.retrieve(question, top_k=top_k, use_mmr=use_mmr)
+        log.info(
+            "Answering via %s: retrieved %d chunks (mmr=%s)",
+            self.provider.name, len(results),
+            self.settings.use_mmr if use_mmr is None else use_mmr,
+        )
         contexts = [r.chunk.text for r in results]
         text = self.provider.generate(question, contexts)
         citations = [
