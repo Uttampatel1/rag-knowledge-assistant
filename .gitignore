@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+data/
+*.npz
+*.faiss
+chroma_db/
+.pytest_cache/
+.ipynb_checkpoints/
+*.log

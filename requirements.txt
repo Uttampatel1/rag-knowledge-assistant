@@ -1,0 +1,26 @@
+# Core API
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+pydantic==2.10.4
+python-dotenv==1.0.1
+
+# Data / math
+numpy>=1.26,<3.0
+
+# Document parsing
+pypdf==5.1.0
+
+# Embeddings (recommended). If not installed, the app falls back to a
+# deterministic hashing embedder so everything still runs offline.
+sentence-transformers==3.3.1
+
+# LLM provider (optional at runtime; mock provider needs no key)
+google-generativeai==0.8.3
+
+# Front end
+streamlit==1.41.1
+requests==2.32.3
+
+# Dev / tests
+pytest==8.3.4
