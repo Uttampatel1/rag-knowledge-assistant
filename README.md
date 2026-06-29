@@ -6,6 +6,17 @@ A production-style **Retrieval-Augmented Generation** service that ingests your 
 
 ---
 
+<!-- portfolio-visuals -->
+
+## 🔧 How it works
+
+![RAG Knowledge Assistant — architecture & data flow](./architecture.svg)
+
+*End-to-end flow from input to output — see [`architecture.svg`](./architecture.svg).*
+
+---
+
+
 ## The problem it solves
 
 Generic LLMs don't know your internal handbooks, contracts, product docs, or policies — and when asked, they confidently make things up. This service grounds an LLM in **your** corpus: it retrieves the most relevant passages and forces the model to answer from them, citing each source. That turns an unverifiable chatbot into an **auditable** knowledge tool.
