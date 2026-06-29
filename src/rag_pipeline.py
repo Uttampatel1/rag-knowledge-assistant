@@ -86,11 +86,34 @@ class RAGPipeline:
         return self.store.sources()
 
     # --- query --------------------------------------------------------------
-    def retrieve(self, question: str, top_k: int | None = None, use_mmr: bool | None = None):
+    def _resolve_mode(self, use_mmr: bool | None, mode: str | None) -> str:
+        if mode:
+            return mode.lower()
+        if use_mmr is not None:
+            return "mmr" if use_mmr else "dense"
+        if self.settings.retrieval_mode in ("dense", "mmr", "hybrid"):
+            return self.settings.retrieval_mode
+        return "mmr" if self.settings.use_mmr else "dense"
+
+    def retrieve(
+        self,
+        question: str,
+        top_k: int | None = None,
+        use_mmr: bool | None = None,
+        mode: str | None = None,
+    ):
         top_k = top_k or self.settings.top_k
-        use_mmr = self.settings.use_mmr if use_mmr is None else use_mmr
+        resolved = self._resolve_mode(use_mmr, mode)
         query_vec = self.embedder.embed_one(question)
-        if use_mmr:
+        if resolved == "hybrid":
+            return self.store.search_hybrid(
+                question,
+                query_vec,
+                top_k=top_k,
+                fetch_k=self.settings.hybrid_fetch_k,
+                rrf_k=self.settings.rrf_k,
+            )
+        if resolved == "mmr":
             return self.store.search_mmr(
                 query_vec,
                 top_k=top_k,
@@ -99,12 +122,17 @@ class RAGPipeline:
             )
         return self.store.search(query_vec, top_k=top_k)
 
-    def answer(self, question: str, top_k: int | None = None, use_mmr: bool | None = None) -> RAGAnswer:
-        results = self.retrieve(question, top_k=top_k, use_mmr=use_mmr)
+    def answer(
+        self,
+        question: str,
+        top_k: int | None = None,
+        use_mmr: bool | None = None,
+        mode: str | None = None,
+    ) -> RAGAnswer:
+        results = self.retrieve(question, top_k=top_k, use_mmr=use_mmr, mode=mode)
         log.info(
-            "Answering via %s: retrieved %d chunks (mmr=%s)",
-            self.provider.name, len(results),
-            self.settings.use_mmr if use_mmr is None else use_mmr,
+            "Answering via %s: retrieved %d chunks (mode=%s)",
+            self.provider.name, len(results), self._resolve_mode(use_mmr, mode),
         )
         contexts = [r.chunk.text for r in results]
         text = self.provider.generate(question, contexts)

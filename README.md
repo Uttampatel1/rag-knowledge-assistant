@@ -25,12 +25,13 @@ Generic LLMs don't know your internal handbooks, contracts, product docs, or pol
 
 - **End-to-end RAG pipeline:** ingest → chunk → embed → vector search → grounded generation → citations.
 - **Diversity-aware retrieval:** optional **Maximal Marginal Relevance (MMR)** re-ranking (`USE_MMR=true`) trades a little relevance for less-redundant context, so the LLM doesn't get the same fact three times.
+- **Hybrid retrieval (dense + BM25):** set `RETRIEVAL_MODE=hybrid` to fuse semantic vector search with classic **BM25 keyword** search via **Reciprocal Rank Fusion** — recovers exact-token matches (acronyms, error codes, SKUs) that pure embeddings miss, with no score calibration to tune.
 - **Pluggable LLM provider:** Google **Gemini** in production; a deterministic **offline mock** provider for tests/CI/demos (no API key needed).
 - **Pluggable embeddings:** `sentence-transformers` for semantic quality, with a dependency-free **hashing fallback** so the system runs fully offline.
 - **Auditable answers:** each response returns the exact passages used, with similarity scores.
 - **Two interfaces:** documented REST API (FastAPI/OpenAPI) and a Streamlit UI.
 - **Production-ready:** structured logging (`LOG_LEVEL`), `Dockerfile` + `docker-compose.yml`, and GitHub Actions CI.
-- **Tested:** 22 `pytest` tests covering chunking, vector search (plain + MMR), persistence, and the pipeline.
+- **Tested:** 28 `pytest` tests covering chunking, vector search (plain + MMR + hybrid/BM25/RRF), persistence, and the pipeline.
 
 ## Demo
 
@@ -145,13 +146,14 @@ EMBEDDINGS_BACKEND=sentence-transformers
 │   ├── config.py           # typed settings from .env
 │   ├── chunking.py         # overlapping, sentence-aware text splitter
 │   ├── embeddings.py       # sentence-transformers + hashing fallback
-│   ├── vector_store.py     # NumPy cosine store (Chroma/FAISS-style) + MMR search
+│   ├── vector_store.py     # NumPy cosine store (Chroma/FAISS-style) + MMR + hybrid search
+│   ├── hybrid.py           # BM25 keyword search + Reciprocal Rank Fusion
 │   ├── ingest.py           # PDF/TXT/MD loading + index building
 │   ├── llm_provider.py     # pluggable Gemini / mock providers
 │   ├── logging_utils.py    # structured logging + timing
-│   ├── rag_pipeline.py     # retrieve (plain/MMR) → generate → cite orchestration
+│   ├── rag_pipeline.py     # retrieve (dense/MMR/hybrid) → generate → cite orchestration
 │   └── generate_data.py    # synthetic knowledge base generator
-├── tests/                  # 22 pytest tests (offline)
+├── tests/                  # 28 pytest tests (offline)
 ├── Dockerfile              # containerised FastAPI service
 ├── docker-compose.yml
 ├── .github/workflows/ci.yml
@@ -163,7 +165,7 @@ EMBEDDINGS_BACKEND=sentence-transformers
 ## Possible extensions
 
 - Swap the NumPy store for **Chroma/FAISS/pgvector** (interface is already isolated).
-- **Hybrid retrieval** (BM25 + dense) and a cross-encoder **re-ranker** for higher precision.
+- A cross-encoder **re-ranker** on top of hybrid retrieval for even higher precision. *(Hybrid BM25 + dense retrieval is now built in — see `RETRIEVAL_MODE=hybrid`.)*
 - **Streaming** token responses and conversational memory for multi-turn Q&A.
 - **Evaluation harness** (faithfulness / answer-relevancy) to track quality across changes.
 - Per-document **access control** and multi-tenant workspaces.

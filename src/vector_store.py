@@ -14,6 +14,11 @@ from dataclasses import dataclass
 import numpy as np
 
 from .chunking import Chunk
+from .hybrid import BM25, reciprocal_rank_fusion, tokenize
+
+
+def _text_tokens(chunk: Chunk) -> list[str]:
+    return tokenize(chunk.text)
 
 
 @dataclass
@@ -29,6 +34,7 @@ class NumpyVectorStore:
         self.dim = dim
         self._vectors = np.empty((0, dim), dtype=np.float32)
         self._chunks: list[Chunk] = []
+        self._bm25: BM25 | None = None  # lazy lexical index, invalidated on add
 
     def __len__(self) -> int:
         return len(self._chunks)
@@ -42,6 +48,7 @@ class NumpyVectorStore:
             )
         self._vectors = np.vstack([self._vectors, vectors.astype(np.float32)])
         self._chunks.extend(chunks)
+        self._bm25 = None  # invalidate lexical index; rebuilt lazily on next use
 
     def search(self, query_vector: np.ndarray, top_k: int = 4) -> list[SearchResult]:
         if len(self._chunks) == 0:
@@ -96,6 +103,51 @@ class NumpyVectorStore:
             selected.append(candidates.pop(best_idx))
 
         return [SearchResult(chunk=self._chunks[i], score=float(scores[i])) for i in selected]
+
+    # --- lexical / hybrid retrieval ----------------------------------------
+    def _ensure_bm25(self) -> BM25:
+        if self._bm25 is None:
+            self._bm25 = BM25([_text_tokens(c) for c in self._chunks])
+        return self._bm25
+
+    def keyword_search(self, query: str, top_k: int = 4) -> list[SearchResult]:
+        """Pure BM25 lexical search — exact-token matches (acronyms, codes)."""
+        if not self._chunks:
+            return []
+        bm25 = self._ensure_bm25()
+        scores = bm25.scores(query)
+        ranked = sorted(
+            (i for i in range(len(scores)) if scores[i] > 0),
+            key=lambda i: -scores[i],
+        )[:top_k]
+        return [SearchResult(chunk=self._chunks[i], score=float(scores[i])) for i in ranked]
+
+    def search_hybrid(
+        self,
+        query_text: str,
+        query_vector: np.ndarray,
+        top_k: int = 4,
+        fetch_k: int = 20,
+        rrf_k: int = 60,
+    ) -> list[SearchResult]:
+        """Fuse dense (semantic) and BM25 (lexical) rankings via RRF.
+
+        Each retriever proposes its top ``fetch_k`` candidates; Reciprocal Rank
+        Fusion combines them by rank (no score calibration needed), so a passage
+        that *either* retriever ranks highly surfaces. The returned ``score`` is
+        the fused RRF score.
+        """
+        if not self._chunks:
+            return []
+        fetch_k = min(fetch_k, len(self._chunks))
+        query = query_vector.astype(np.float32).reshape(-1)
+        dense_scores = self._vectors @ query
+        dense_rank = list(np.argsort(-dense_scores)[:fetch_k])
+        lexical_rank = self._ensure_bm25().rank(query_text, fetch_k)
+
+        fused = reciprocal_rank_fusion([dense_rank, lexical_rank], k=rrf_k)
+        top = fused[: min(top_k, len(fused))]
+        return [SearchResult(chunk=self._chunks[i], score=round(score, 6)) for i, score in top]
 
     def sources(self) -> list[str]:
         return sorted({c.source for c in self._chunks})
